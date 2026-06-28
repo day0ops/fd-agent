@@ -1,0 +1,5 @@
+agentsts-adk[extensions]>=0.7.17
+google-adk[extensions]>=1.25.1
+fastapi>=0.110.0
+uvicorn>=0.29.0
+httpx>=0.27.0
