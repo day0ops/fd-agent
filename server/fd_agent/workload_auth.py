@@ -3,14 +3,19 @@
 Used when MCP_AUTH_MODE=workload. The fd agent fetches its own token and
 injects it into every MCP call via MCPToolset.header_provider.
 
-Two sub-modes:
+Three sub-modes:
 
-STS OBO exchange (STS_URL set, USE_TOKEN_EXCHANGE=true)
+agentgateway-managed STS (USE_AGENTGATEWAY_STS=true)
+  App skips the STS exchange entirely. A plain Keycloak client_credentials
+  token is used; agentgateway's native OBO elicitation performs the token
+  exchange at the gateway level. STS_URL may still be set but is ignored.
+
+App-level STS OBO exchange (STS_URL set, USE_AGENTGATEWAY_STS=false)
   Two-step RFC 8693 exchange used in UC1 Path A (direct fd-agent identity):
   1. Fetch a Keycloak access token via client_credentials (client_id=fd-agent).
   2. POST KC token + K8s SA JWT to the agentgateway STS → OBO token
-     (iss=STS, azp=fd-agent). agentgateway CEL RBAC allows both
-     get_total_fixed_deposits and book_fixed_deposit for azp=fd-agent.
+     (iss=STS, client_id=fd-agent). agentgateway CEL RBAC allows both
+     get_total_fixed_deposits and book_fixed_deposit for client_id=fd-agent.
 
 KC token-exchange (USE_TOKEN_EXCHANGE=true, no STS_URL)
   Exchange the auto-mounted K8s SA JWT directly at Keycloak (RFC 8693).
@@ -38,6 +43,7 @@ _AUDIENCE = os.environ.get("AUDIENCE", "agentgateway")
 _USE_TOKEN_EXCHANGE = os.environ.get("USE_TOKEN_EXCHANGE", "false").lower() == "true"
 _SA_TOKEN_PATH = os.environ.get("SA_TOKEN_PATH", "/var/run/secrets/tokens/sa-token")
 _STS_URL = os.environ.get("STS_URL", "")
+_USE_AGENTGATEWAY_STS = os.environ.get("USE_AGENTGATEWAY_STS", "false").lower() == "true"
 
 _GRANT_TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange"
 _GRANT_CLIENT_CREDENTIALS = "client_credentials"
@@ -58,7 +64,9 @@ class WorkloadMCPTokenProvider:
             if self._token and time.monotonic() < self._expires_at - 30:
                 return self._token
             self._token, self._expires_at = self._fetch()
-            if _STS_URL:
+            if _USE_AGENTGATEWAY_STS:
+                mode = "agentgateway-managed-sts"
+            elif _STS_URL:
                 mode = "sts-obo-exchange"
             elif _USE_TOKEN_EXCHANGE:
                 mode = "kc-token-exchange"
@@ -76,7 +84,7 @@ class WorkloadMCPTokenProvider:
         return {"Authorization": f"Bearer {token}"}
 
     def _fetch(self) -> tuple[str, float]:
-        if _STS_URL:
+        if _STS_URL and not _USE_AGENTGATEWAY_STS:
             return self._fetch_sts_obo()
         token_url = f"{_KEYCLOAK_URL}/realms/{_REALM}/protocol/openid-connect/token"
         data = self._build_exchange_data() if _USE_TOKEN_EXCHANGE else self._build_client_credentials_data()
@@ -89,8 +97,8 @@ class WorkloadMCPTokenProvider:
     def _fetch_sts_obo(self) -> tuple[str, float]:
         """Two-step RFC 8693 OBO exchange via the agentgateway STS (UC1 Path A).
 
-        Step 1: Keycloak client_credentials → KC access token (azp=fd-agent).
-        Step 2: POST KC token + SA JWT to STS → OBO token (iss=STS, azp=fd-agent).
+        Step 1: Keycloak client_credentials → KC access token (client_id=fd-agent).
+        Step 2: POST KC token + SA JWT to STS → OBO token (iss=STS, client_id=fd-agent).
         """
         kc_token = self._fetch_kc_client_credentials()
         sa_token = Path(_SA_TOKEN_PATH).read_text().strip()
