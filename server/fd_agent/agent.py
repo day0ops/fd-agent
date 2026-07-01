@@ -4,16 +4,16 @@ MCP authentication is controlled by MCP_AUTH_MODE:
   propagate (default)
     ADKTokenPropagationPlugin forwards the incoming Authorization header to
     every outbound MCP call.
-    Used in UC1 Path B (OBO native): loan-agent's OBO token (azp=loan-agent) is
-    propagated unchanged to /fd-mcp. agentgateway CEL RBAC sees azp=loan-agent
+    Used in UC1 Path B (OBO native): loan-agent's OBO token (client_id=loan-agent) is
+    propagated unchanged to /fd-mcp. agentgateway CEL RBAC sees client_id=loan-agent
     and restricts the caller to get_total_fixed_deposits (read-only).
   workload
     WorkloadMCPTokenProvider fetches this agent's own token and injects it into
     every MCP call. Supports two sub-modes based on STS_URL:
     - STS_URL set: two-step RFC 8693 OBO exchange (KC client_credentials → KC
-      token → STS → OBO token with azp=fd-agent). Used for UC1 Path A (direct
+      token → STS → OBO token with client_id=fd-agent). Used for UC1 Path A (direct
       fd-agent identity): CEL RBAC allows both get_total_fixed_deposits and
-      book_fixed_deposit for azp=fd-agent.
+      book_fixed_deposit for client_id=fd-agent.
     - No STS_URL: SA JWT → Keycloak token exchange. Used in UC2 (chain-fd-agent).
 
 Environment variables:
