@@ -5,21 +5,19 @@ injects it into every MCP call via MCPToolset.header_provider.
 
 Three sub-modes:
 
-agentgateway-managed STS (USE_AGENTGATEWAY_STS=true)
-  App skips the STS exchange entirely. A plain Keycloak client_credentials
-  token is used; agentgateway's native OBO elicitation performs the token
-  exchange at the gateway level. STS_URL may still be set but is ignored.
-
-App-level STS OBO exchange (STS_URL set, USE_AGENTGATEWAY_STS=false)
+agentgateway STS OBO exchange (USE_AGENTGATEWAY_STS=true)
   Two-step RFC 8693 exchange used in UC1 Path A (direct fd-agent identity):
   1. Fetch a Keycloak access token via client_credentials (client_id=fd-agent).
-  2. POST KC token + K8s SA JWT to the agentgateway STS → OBO token
+  2. POST KC token + K8s SA JWT to the agentgateway STS (STS_URL) → OBO token
      (iss=STS, client_id=fd-agent). agentgateway CEL RBAC allows both
      get_total_fixed_deposits and book_fixed_deposit for client_id=fd-agent.
 
-KC token-exchange (USE_TOKEN_EXCHANGE=true, no STS_URL)
+KC token-exchange (USE_TOKEN_EXCHANGE=true, USE_AGENTGATEWAY_STS=false)
   Exchange the auto-mounted K8s SA JWT directly at Keycloak (RFC 8693).
   Used in UC2 (workload-identity chain, chain-fd-agent identity).
+
+Client credentials (default)
+  Plain Keycloak client_credentials token — no STS or SA exchange.
 
 Token is cached in-memory and refreshed 30 seconds before expiry.
 """
@@ -65,8 +63,6 @@ class WorkloadMCPTokenProvider:
                 return self._token
             self._token, self._expires_at = self._fetch()
             if _USE_AGENTGATEWAY_STS:
-                mode = "agentgateway-managed-sts"
-            elif _STS_URL:
                 mode = "sts-obo-exchange"
             elif _USE_TOKEN_EXCHANGE:
                 mode = "kc-token-exchange"
@@ -84,7 +80,7 @@ class WorkloadMCPTokenProvider:
         return {"Authorization": f"Bearer {token}"}
 
     def _fetch(self) -> tuple[str, float]:
-        if _STS_URL and not _USE_AGENTGATEWAY_STS:
+        if _USE_AGENTGATEWAY_STS:
             return self._fetch_sts_obo()
         token_url = f"{_KEYCLOAK_URL}/realms/{_REALM}/protocol/openid-connect/token"
         data = self._build_exchange_data() if _USE_TOKEN_EXCHANGE else self._build_client_credentials_data()
