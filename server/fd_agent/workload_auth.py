@@ -12,7 +12,7 @@ agentgateway STS OBO exchange (USE_AGENTGATEWAY_STS=true)
      (iss=STS, client_id=fd-agent). agentgateway CEL RBAC allows both
      get_total_fixed_deposits and book_fixed_deposit for client_id=fd-agent.
 
-KC token-exchange (USE_TOKEN_EXCHANGE=true, USE_AGENTGATEWAY_STS=false)
+KC token-exchange (USE_KEYCLOAK_EXCHANGE=true, USE_AGENTGATEWAY_STS=false)
   Exchange the auto-mounted K8s SA JWT directly at Keycloak (RFC 8693).
   Used in UC2 (workload-identity chain, chain-fd-agent identity).
 
@@ -38,7 +38,7 @@ _REALM = os.environ.get("KEYCLOAK_REALM", "agw-dev")
 _CLIENT_ID = os.environ.get("CLIENT_ID", "fd-agent")
 _CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
 _AUDIENCE = os.environ.get("AUDIENCE", "agentgateway")
-_USE_TOKEN_EXCHANGE = os.environ.get("USE_TOKEN_EXCHANGE", "false").lower() == "true"
+_USE_KEYCLOAK_EXCHANGE = os.environ.get("USE_KEYCLOAK_EXCHANGE", "false").lower() == "true"
 _SA_TOKEN_PATH = os.environ.get("SA_TOKEN_PATH", "/var/run/secrets/tokens/sa-token")
 _STS_URL = os.environ.get("STS_URL", "")
 _USE_AGENTGATEWAY_STS = os.environ.get("USE_AGENTGATEWAY_STS", "false").lower() == "true"
@@ -64,7 +64,7 @@ class WorkloadMCPTokenProvider:
             self._token, self._expires_at = self._fetch()
             if _USE_AGENTGATEWAY_STS:
                 mode = "sts-obo-exchange"
-            elif _USE_TOKEN_EXCHANGE:
+            elif _USE_KEYCLOAK_EXCHANGE:
                 mode = "kc-token-exchange"
             else:
                 mode = "client_credentials"
@@ -83,7 +83,7 @@ class WorkloadMCPTokenProvider:
         if _USE_AGENTGATEWAY_STS:
             return self._fetch_sts_obo()
         token_url = f"{_KEYCLOAK_URL}/realms/{_REALM}/protocol/openid-connect/token"
-        data = self._build_exchange_data() if _USE_TOKEN_EXCHANGE else self._build_client_credentials_data()
+        data = self._build_exchange_data() if _USE_KEYCLOAK_EXCHANGE else self._build_client_credentials_data()
         with httpx.Client(verify=False) as client:
             resp = client.post(token_url, data=data)
             resp.raise_for_status()
